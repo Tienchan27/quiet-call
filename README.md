@@ -81,34 +81,17 @@ Mô phỏng dùng cùng bộ quyết định với dịch vụ Android; trạng 
 
 Nếu không chặn, kiểm tra vai trò lọc, trạng thái bảo vệ, công tắc nhóm, số đã lưu, ngoại lệ và bảo vệ danh bạ. Ứng dụng chỉ nhận diện số trong danh mục; số mới cần bổ sung. Lịch sử chỉ chứa các lượt ứng dụng nhận xử lý, không phải toàn bộ nhật ký điện thoại. Đã kiểm tra trên emulator Android 10; chưa xác minh cuộc gọi SIM trên điện thoại vật lý.
 
-## Đóng gói project
+## Nộp bài
 
-Trên Windows, chạy `package-submission.cmd` hoặc:
+Gửi link [GitHub: Tienchan27/quiet-call](https://github.com/Tienchan27/quiet-call) và tệp `app/build/outputs/apk/debug/app-debug.apk` cho giảng viên. Nếu gửi APK qua Google Drive, upload tệp này và bật quyền xem cho người nhận.
 
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-submission.ps1
-```
+Mã nguồn nằm trên nhánh `main`. Git bỏ qua SDK/emulator cục bộ, cache, database cá nhân, khóa ký và đầu ra build. Workflow GitHub Actions tạo APK trong artifact `QuietCall-debug-apk` khi build thành công.
 
-Script build APK, chạy Android Lint rồi tạo trong `deliverables/`:
+## Tài liệu kỹ thuật
 
-- `QuietCall-1.0.0-debug.apk`: APK debug đã ký, cài được để dùng thử/chấm đồ án.
-- `QuietCall-1.0.0-source.zip`: mã nguồn, Gradle Wrapper, README, tài liệu kỹ thuật và JSON mẫu.
-- `QuietCall-1.0.0-project.zip`: gói chung gồm APK, source ZIP, README và SHA-256.
-- `SHA256.txt`: đối chiếu APK và source ZIP; `PACKAGE-SHA256.txt` đối chiếu gói chung.
-
-Source ZIP không chứa `.git`, SDK/JDK/emulator, cache, `local.properties`, khóa ký hay database cá nhân. Giải nén source ZIP, mở thư mục QuietCall bằng Android Studio rồi cấu hình SDK theo phần Build. Các launcher emulator dành cho máy đã chuẩn bị cần `.tooling` cục bộ, không được đóng vào ZIP.
-
-Repository: [Tienchan27/quiet-call](https://github.com/Tienchan27/quiet-call), nhánh `main`. Thư mục `deliverables/` được Git bỏ qua; APK được tạo bằng script đóng gói hoặc tải từ artifact của workflow GitHub Actions khi build thành công.
-
-## Tài liệu đồ án
-
-- [Brainstorm, sản phẩm và kế hoạch triển khai](docs/PRODUCT_PLAN.md)
 - [Kiến trúc và quyết định kỹ thuật](docs/ARCHITECTURE.md)
-- [Kịch bản demo và kiểm tra thủ công](docs/DEMO.md)
-- [Hướng dẫn nộp và email mẫu](docs/SUBMISSION.md)
+- [Chạy trên máy đã chuẩn bị](docs/LOCAL_RUN.md)
 - [Danh mục JSON mẫu](samples/demo-catalog.json)
-- [Kết quả xác minh build/runtime](docs/VERIFICATION.md)
-- [Rà soát business, chức năng, UI/UX và hiệu năng](docs/PRODUCT_REVIEW.md)
 
 ## Công nghệ
 

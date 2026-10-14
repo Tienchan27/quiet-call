@@ -25,7 +25,7 @@ Script đặt cửa sổ emulator ở vị trí (20, 20) và tỷ lệ 25% để
 Dùng chuột bấm nút, kéo màn hình để cuộn, nhập số qua bàn phím Android. Bốn tab nằm dưới cùng. Dữ liệu demo ghi rõ Demo và không đại diện doanh nghiệp thật.
 
 1. **Thương hiệu**: bật/tắt nhóm Aster Finance; xem các số trong nhóm.
-2. **Tổng quan → Mở mô phỏng**: nhập `0900000001` để xem quyết định.
+2. **Tổng quan → Thử quy tắc**: nhập `0900000001` để xem quyết định.
 3. **Cài đặt**: thêm whitelist, thay chế độ tắt chuông, nhập/xuất JSON; xem trước thay đổi trước khi xác nhận gộp và chỉ khôi phục whitelist khi chọn rõ.
 4. **Lịch sử**: phân biệt mô phỏng với cuộc gọi do Telecom máy ảo chuyển vào.
 
