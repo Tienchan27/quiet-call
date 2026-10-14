@@ -81,12 +81,6 @@ Mô phỏng dùng cùng bộ quyết định với dịch vụ Android; trạng 
 
 Nếu không chặn, kiểm tra vai trò lọc, trạng thái bảo vệ, công tắc nhóm, số đã lưu, ngoại lệ và bảo vệ danh bạ. Ứng dụng chỉ nhận diện số trong danh mục; số mới cần bổ sung. Lịch sử chỉ chứa các lượt ứng dụng nhận xử lý, không phải toàn bộ nhật ký điện thoại. Đã kiểm tra trên emulator Android 10; chưa xác minh cuộc gọi SIM trên điện thoại vật lý.
 
-## Nộp bài
-
-Gửi link [GitHub: Tienchan27/quiet-call](https://github.com/Tienchan27/quiet-call) và tệp `app/build/outputs/apk/debug/app-debug.apk` cho giảng viên. Nếu gửi APK qua Google Drive, upload tệp này và bật quyền xem cho người nhận.
-
-Mã nguồn nằm trên nhánh `main`. Git bỏ qua SDK/emulator cục bộ, cache, database cá nhân, khóa ký và đầu ra build. Workflow GitHub Actions tạo APK trong artifact `QuietCall-debug-apk` khi build thành công.
-
 ## Tài liệu kỹ thuật
 
 - [Kiến trúc và quyết định kỹ thuật](docs/ARCHITECTURE.md)
