@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "brands": [
+    {"name": "Aster Finance · Demo", "note": "Tài chính • Dữ liệu giả lập, không đại diện doanh nghiệp thật", "blocked": false, "numbers": ["0900000001", "0900000002", "0900000003"]},
+    {"name": "Nova Homes · Demo", "note": "Bất động sản • Dữ liệu giả lập", "blocked": false, "numbers": ["0900000011", "0900000012"]},
+    {"name": "Orbit Ads · Demo", "note": "Quảng cáo • Dữ liệu giả lập", "blocked": false, "numbers": ["0900000021", "0900000022"]}
+  ],
+  "allowed": []
+}

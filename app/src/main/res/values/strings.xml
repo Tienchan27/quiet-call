@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="block_this_brand">Chặn thương hiệu này</string>
+    <string name="simulate_contact">Giả lập số có trong danh bạ</string>
+    <string name="simulation_result">%1$s\n%2$s</string>
+    <string name="numbers_preview">%1$d số hợp lệ · %2$d số trùng · %3$d số chưa hợp lệ</string>
+    <string name="restore_allowed">Khôi phục thêm %1$d số luôn cho phép</string>
+</resources>
