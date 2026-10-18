@@ -63,13 +63,14 @@ Database schema version 2 (khác với catalog JSON schemaVersion=1). Migration 
 3. Số có trong whitelist → ALLOW.
 4. Số có trong danh bạ và protectContacts bật → ALLOW.
 5. Số khớp một thương hiệu đang chặn → SILENCE nếu bật silence, ngược lại BLOCK.
-6. Mọi trường hợp khác → ALLOW.
+6. `matchCallerName` bật và tên hiển thị chứa `name_key` (độ dài ≥ 3) của thương hiệu đang chặn → BLOCK/SILENCE, `learnBrandId` để thêm số vào nhóm, rồi noti undo (Cho phép / Gỡ) nếu `notifyBlocked`.
+7. Mọi trường hợp khác → ALLOW.
 
-Chặn: `disallow=true`, `reject=true`, `skipNotification=true`, `skipCallLog=false`. Tắt chuông: `silence=true`, không disallow. Chính hệ thống quyết định giao diện thực tế; không dùng overlay/accessibility để cưỡng chế.
+Chặn: `disallow=true`, `reject=true`, `skipNotification=true` (bỏ missed-call hệ thống), `skipCallLog=false`. Tắt chuông: `silence=true`, không disallow. Noti QuietCall là kênh riêng. Không dùng overlay/accessibility.
 
 ## Quyền
 
-`BIND_SCREENING_SERVICE` bảo vệ service: chỉ hệ thống được bind. `ROLE_CALL_SCREENING` phải do user đồng ý. `READ_CONTACTS` runtime tùy chọn; không quyền thì Android thường bỏ qua số liên hệ trong callback. Manifest không xin Internet, call log, SMS, overlay hay quyền chạy foreground service.
+`BIND_SCREENING_SERVICE` bảo vệ service: chỉ hệ thống được bind. `ROLE_CALL_SCREENING` phải do user đồng ý. `READ_CONTACTS` runtime tùy chọn; `POST_NOTIFICATIONS` (API 33+) cho thông báo khi chặn. Manifest không xin Internet, call log, SMS, overlay hay quyền chạy foreground service.
 
 ## Nguồn API
 

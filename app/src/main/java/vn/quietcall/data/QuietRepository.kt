@@ -50,9 +50,24 @@ class QuietRepository(context: Context) : SQLiteOpenHelper(context.applicationCo
     fun preferences(): Preferences {
         val values = mutableMapOf<String, Boolean>()
         readableDatabase.rawQuery("SELECT key,value FROM settings", null).use { c -> while (c.moveToNext()) values[c.getString(0)] = c.getInt(1) == 1 }
-        return Preferences(values["protection"] ?: true, values["silence"] ?: false, values["protectContacts"] ?: true)
+        return Preferences(
+            values["protection"] ?: true,
+            values["silence"] ?: false,
+            values["protectContacts"] ?: true,
+            values["matchCallerName"] ?: true,
+            values["notifyBlocked"] ?: true,
+        )
     }
     fun snapshot() = Snapshot(brands(), allowed(), preferences())
+
+    private fun readPreferencesRow(c: android.database.Cursor, protection: Int, silence: Int, protectContacts: Int, matchCallerName: Int, notifyBlocked: Int) =
+        Preferences(
+            c.getInt(protection) == 1,
+            c.getInt(silence) == 1,
+            c.getInt(protectContacts) == 1,
+            c.getInt(matchCallerName) == 1,
+            c.getInt(notifyBlocked) == 1,
+        )
 
     /** One consistent SQL statement, indexed by the incoming number. Never loads the whole catalog. */
     fun snapshotForNumber(raw: String): Snapshot {
@@ -61,6 +76,8 @@ class QuietRepository(context: Context) : SQLiteOpenHelper(context.applicationCo
             COALESCE((SELECT value FROM settings WHERE key='protection'),1),
             COALESCE((SELECT value FROM settings WHERE key='silence'),0),
             COALESCE((SELECT value FROM settings WHERE key='protectContacts'),1),
+            COALESCE((SELECT value FROM settings WHERE key='matchCallerName'),1),
+            COALESCE((SELECT value FROM settings WHERE key='notifyBlocked'),1),
             a.number IS NOT NULL,b.id,b.name,b.note,b.blocked,b.updated_at
             FROM (SELECT ? AS caller) q
             LEFT JOIN numbers n ON n.number=q.caller
@@ -68,11 +85,78 @@ class QuietRepository(context: Context) : SQLiteOpenHelper(context.applicationCo
             LEFT JOIN allowed a ON a.number=q.caller""".trimIndent()
         return readableDatabase.rawQuery(sql, arrayOf(number)).use { c ->
             check(c.moveToFirst())
-            val prefs = Preferences(c.getInt(0) == 1, c.getInt(1) == 1, c.getInt(2) == 1)
-            val brand = if (c.isNull(4)) emptyList() else listOf(Brand(c.getLong(4), c.getString(5), c.getString(6), c.getInt(7) == 1, listOf(number), c.getLong(8)))
-            Snapshot(brand, if (c.getInt(3) == 1) setOf(number) else emptySet(), prefs)
+            val prefs = readPreferencesRow(c, 0, 1, 2, 3, 4)
+            val brand = if (c.isNull(6)) emptyList() else listOf(Brand(c.getLong(6), c.getString(7), c.getString(8), c.getInt(9) == 1, listOf(number), c.getLong(10)))
+            Snapshot(brand, if (c.getInt(5) == 1) setOf(number) else emptySet(), prefs)
         }
     }
+
+    /**
+     * Screening snapshot: number match brand (if any) plus every blocked brand for display-name matching.
+     * Blocked brands without the caller number use an empty numbers list so only name rules can hit them.
+     */
+    fun snapshotForScreening(raw: String): Snapshot {
+        val number = PhoneNumbers.normalize(raw)
+        val prefs = preferences()
+        val allowed = if (number.isNotBlank() && number in allowed()) setOf(number) else emptySet()
+        val matchedId = if (number.isBlank()) null else readableDatabase.rawQuery(
+            "SELECT b.id,b.name,b.note,b.blocked,b.updated_at FROM numbers n JOIN brands b ON b.id=n.brand_id WHERE n.number=?",
+            arrayOf(number),
+        ).use { c ->
+            if (!c.moveToFirst()) null
+            else Brand(c.getLong(0), c.getString(1), c.getString(2), c.getInt(3) == 1, listOf(number), c.getLong(4))
+        }
+        val blocked = mutableListOf<Brand>()
+        readableDatabase.rawQuery(
+            "SELECT id,name,note,blocked,updated_at FROM brands WHERE blocked=1 ORDER BY name COLLATE NOCASE",
+            null,
+        ).use { c ->
+            while (c.moveToNext()) {
+                val id = c.getLong(0)
+                if (matchedId?.id == id) continue
+                blocked.add(Brand(id, c.getString(1), c.getString(2), true, emptyList(), c.getLong(4)))
+            }
+        }
+        val brands = buildList {
+            if (matchedId != null) add(matchedId)
+            addAll(blocked)
+        }
+        return Snapshot(brands, allowed, prefs)
+    }
+
+    /** Adds a learned number to a brand. Returns brand name on success, null if invalid or owned elsewhere. */
+    fun learnNumber(brandId: Long, raw: String): String? {
+        if (!PhoneNumbers.valid(raw)) return null
+        val number = PhoneNumbers.normalize(raw)
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val brandName = db.rawQuery("SELECT name,blocked FROM brands WHERE id=?", arrayOf(brandId.toString())).use { c ->
+                if (!c.moveToFirst() || c.getInt(1) != 1) return null
+                c.getString(0)
+            }
+            db.rawQuery("SELECT brand_id FROM numbers WHERE number=?", arrayOf(number)).use { c ->
+                if (c.moveToFirst()) {
+                    return if (c.getLong(0) == brandId) brandName else null
+                }
+            }
+            db.insertOrThrow("numbers", null, ContentValues().apply { put("number", number); put("brand_id", brandId) })
+            db.execSQL("UPDATE brands SET updated_at=? WHERE id=?", arrayOf(System.currentTimeMillis(), brandId))
+            db.setTransactionSuccessful()
+            return brandName
+        } finally { db.endTransaction() }
+    }
+
+    fun removeNumberFromBrand(brandId: Long, raw: String): Boolean {
+        val number = PhoneNumbers.normalize(raw)
+        if (number.isBlank()) return false
+        return writableDatabase.delete("numbers", "number=? AND brand_id=?", arrayOf(number, brandId.toString())) > 0
+    }
+
+    fun brandIdByName(name: String): Long? =
+        readableDatabase.rawQuery("SELECT id FROM brands WHERE name_key=?", arrayOf(PhoneNumbers.key(name))).use {
+            if (it.moveToFirst()) it.getLong(0) else null
+        }
     fun setSetting(key: String, value: Boolean) {
         writableDatabase.insertWithOnConflict("settings", null, ContentValues().apply { put("key", key); put("value", if (value) 1 else 0) }, SQLiteDatabase.CONFLICT_REPLACE)
     }

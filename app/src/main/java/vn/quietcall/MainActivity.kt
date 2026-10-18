@@ -54,6 +54,7 @@ class MainActivity : Activity() {
     private var brandPageIndex = 0
     private var importing = false
     private var dataWorkTitle = "Đang xử lý dữ liệu"
+    private var askedRoleThisSession = false
     private val mainHandler = Handler(Looper.getMainLooper())
     private var pendingSearch: Runnable? = null
     private val historyObserver: () -> Unit = {
@@ -96,7 +97,12 @@ class MainActivity : Activity() {
         setContentView(root)
         root.requestApplyInsets()
     }
-    override fun onResume() { super.onResume(); if (::content.isInitialized) render() }
+    override fun onResume() {
+        super.onResume()
+        if (!::content.isInitialized) return
+        render()
+        if (!importing) content.post { promptRoleIfNeeded(auto = true) }
+    }
     override fun onStart() {
         super.onStart()
         HistoryUpdates.addObserver(historyObserver)
@@ -239,9 +245,107 @@ class MainActivity : Activity() {
         if (manager == null || !manager.isRoleAvailable(RoleManager.ROLE_CALL_SCREENING)) {
             toast("Thiết bị không hỗ trợ vai trò lọc cuộc gọi. Bạn vẫn có thể dùng mô phỏng."); return
         }
-        if (hasRole()) { toast("QuietCall đã được chọn làm ứng dụng lọc cuộc gọi."); return }
+        if (hasRole()) { toast("QuietCall đã được chọn làm app lọc cuộc gọi."); requestNotifyPermission(); return }
         @Suppress("DEPRECATION")
         startActivityForResult(manager.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING), 100)
+    }
+    /** auto=true: once per session when role missing. auto=false: always open the system picker. */
+    private fun promptRoleIfNeeded(auto: Boolean) {
+        if (hasRole()) {
+            if (!auto) requestNotifyPermission()
+            return
+        }
+        val manager = roleManager()
+        if (manager == null || !manager.isRoleAvailable(RoleManager.ROLE_CALL_SCREENING)) {
+            if (!auto) toast("Thiết bị không hỗ trợ vai trò lọc cuộc gọi. Bạn vẫn có thể dùng mô phỏng.")
+            return
+        }
+        if (auto) {
+            if (askedRoleThisSession) return
+            askedRoleThisSession = true
+        }
+        requestRole()
+    }
+    private fun openCallScreeningSettingsHint() {
+        AlertDialog.Builder(this)
+            .setTitle("Tắt app lọc")
+            .setMessage("Android chỉ đổi app lọc trong Cài đặt hệ thống.\n\nỨng dụng mặc định → Caller ID & spam (hoặc Lọc cuộc gọi) → chọn app khác hoặc Không.")
+            .setPositiveButton("Mở cài đặt") { _, _ ->
+                val intent = Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
+                runCatching { startActivity(intent) }.onFailure { appSettings() }
+            }
+            .setNegativeButton("Đóng", null)
+            .show()
+    }
+    private fun LinearLayout.roleSwitchRow() {
+        val granted = hasRole()
+        val entry = row().apply { setPadding(0, dp(10), 0, dp(10)); minimumHeight = dp(72) }
+        entry.addView(iconTile(Glyph.SHIELD, if (granted) green else amber, if (granted) pale else Color.rgb(251, 242, 223), 38))
+        val summary = column().apply {
+            addView(label("App lọc cuộc gọi", 14f, ink, true)); gap(3)
+            addView(oneLine(if (granted) "Đã chọn · hệ thống gọi QuietCall trước khi đổ chuông" else "Android cần chọn QuietCall làm app lọc", 11f))
+        }
+        entry.addView(summary, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(10); marginEnd = dp(6) })
+        val control = Switch(this@MainActivity).apply {
+            contentDescription = "App lọc cuộc gọi"
+            isChecked = granted
+            setOnCheckedChangeListener { button, checked ->
+                if (checked == hasRole()) return@setOnCheckedChangeListener
+                if (checked) {
+                    button.isChecked = false
+                    promptRoleIfNeeded(auto = false)
+                } else {
+                    button.isChecked = true
+                    openCallScreeningSettingsHint()
+                }
+            }
+        }
+        entry.addView(control)
+        addView(entry)
+    }
+    private fun LinearLayout.filteringSwitchRow(prefs: Preferences) {
+        val granted = hasRole()
+        val entry = row().apply { setPadding(0, dp(10), 0, dp(10)); minimumHeight = dp(72) }
+        entry.addView(iconTile(Glyph.SHIELD, green, pale, 38))
+        val summary = column().apply {
+            addView(label("Đang lọc", 14f, ink, true)); gap(3)
+            addView(oneLine(if (granted) "Tắt để tạm cho phép mọi cuộc gọi" else "Bật app lọc cuộc gọi trước", 11f))
+        }
+        entry.addView(summary, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(10); marginEnd = dp(6) })
+        val control = Switch(this@MainActivity).apply {
+            contentDescription = "Đang lọc"
+            isEnabled = granted
+            isChecked = granted && prefs.protection
+            setOnCheckedChangeListener { _, checked ->
+                if (!hasRole()) return@setOnCheckedChangeListener
+                repository.setSetting("protection", checked)
+                render()
+            }
+        }
+        entry.addView(control)
+        addView(entry)
+    }
+    private fun LinearLayout.blockedGroupsRow(count: Int) {
+        val entry = row().apply {
+            setPadding(0, dp(10), 0, dp(10)); minimumHeight = dp(72)
+            isFocusable = true
+            setOnClickListener { page = 1; render(); scrollToTop() }
+        }
+        entry.addView(iconTile(Glyph.BRAND, violet, Color.rgb(237, 234, 248), 38))
+        val summary = column().apply {
+            addView(label("Nhóm đang chặn", 14f, ink, true)); gap(3)
+            addView(oneLine(if (count == 0) "Chưa bật nhóm · chạm để quản lý" else "$count nhóm đang chặn · chạm để quản lý", 11f))
+        }
+        entry.addView(summary, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(10); marginEnd = dp(6) })
+        entry.addView(badge(if (count == 0) "Chưa" else "$count", if (count == 0) amber else green, if (count == 0) Color.rgb(251, 242, 223) else pale))
+        addView(entry)
+    }
+    private fun hasNotifyPermission(): Boolean =
+        Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    private fun requestNotifyPermission() {
+        if (Build.VERSION.SDK_INT >= 33 && !hasNotifyPermission()) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 102)
+        }
     }
     private fun render() {
         pendingSearch?.let(mainHandler::removeCallbacks)
@@ -280,25 +384,46 @@ class MainActivity : Activity() {
         val granted = hasRole()
         val ready = granted && prefs.protection
         val blocked = snapshot.brands.filter { it.blocked && it.numbers.isNotEmpty() }
-        val status = when { !granted -> "Chưa cấp quyền"; !prefs.protection -> "Đang tạm dừng"; blocked.isEmpty() -> "Chưa bật nhóm chặn"; else -> "Đang bảo vệ" }
+        val fullyReady = ready && blocked.isNotEmpty()
+        val status = when {
+            !granted -> "Chưa chọn app lọc"
+            !prefs.protection -> "Đang tạm dừng"
+            blocked.isEmpty() -> "Chưa bật nhóm"
+            else -> "Đang lọc"
+        }
         heading("QuietCall", "Cuộc gọi quan trọng, không gián đoạn.")
         card(color = green).apply {
-            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(if (ready) Color.rgb(19, 76, 64) else ink, if (ready) Color.rgb(17, 138, 108) else Color.rgb(47, 82, 76))).apply { cornerRadius = dp(24).toFloat() }
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(if (fullyReady) Color.rgb(19, 76, 64) else ink, if (fullyReady) Color.rgb(17, 138, 108) else Color.rgb(47, 82, 76))).apply { cornerRadius = dp(24).toFloat() }
             val body = row()
             val message = column().apply {
                 addView(badge(status, Color.WHITE, Color.argb(32, 255, 255, 255)), LinearLayout.LayoutParams(-2, -2)); gap(12)
-                addView(label(when { !granted -> "Kích hoạt\nbộ lọc của bạn"; !prefs.protection -> "Một chút\ntạm nghỉ."; blocked.isEmpty() -> "Chọn nhóm\nmuốn chặn."; else -> "An tâm\nnghe máy." }, 23f, Color.WHITE, true)); gap(7)
-                addView(label(if (ready && blocked.isNotEmpty()) "${blocked.size} nhóm · ${if (prefs.silence) "Tắt chuông" else "Từ chối"}" else if (!prefs.protection) "Quy tắc vẫn được giữ" else "Thiết lập một lần", 12f, Color.rgb(214, 240, 226)))
+                addView(label(when {
+                    !granted -> "Chọn QuietCall\nlàm app lọc"
+                    !prefs.protection -> "Lọc đang\ntạm tắt"
+                    blocked.isEmpty() -> "Bật nhóm\nmuốn chặn"
+                    else -> "An tâm\nnghe máy"
+                }, 23f, Color.WHITE, true)); gap(7)
+                addView(label(when {
+                    fullyReady -> "${blocked.size} nhóm · ${if (prefs.silence) "Tắt chuông" else "Từ chối"}"
+                    !granted -> "Bật công tắc bên dưới hoặc xác nhận hộp thoại hệ thống"
+                    !prefs.protection -> "Bật lại Đang lọc bên dưới khi sẵn sàng"
+                    else -> "Chọn thương hiệu và bật chặn"
+                }, 12f, Color.rgb(214, 240, 226)))
             }
             body.addView(message, LinearLayout.LayoutParams(0, -2, 1f))
-            body.addView(ShieldScene(this@MainActivity, ready && blocked.isNotEmpty()), LinearLayout.LayoutParams(dp(116), dp(136)))
-            addView(body); gap(12)
-            val actions = row()
-            actions.addView(button(if (!granted) "Kích hoạt bảo vệ" else if (!prefs.protection) "Tiếp tục bảo vệ" else "Quản lý nhóm", false) {
-                if (!granted) requestRole() else if (!prefs.protection) { repository.setSetting("protection", true); render() } else { page = 1; render(); scrollToTop() }
-            }, LinearLayout.LayoutParams(0, -2, 1f))
-            if (ready) actions.addView(iconButton(Glyph.PAUSE, "Tạm dừng bảo vệ", Color.WHITE, Color.argb(30, 255, 255, 255)) { repository.setSetting("protection", false); render() }, LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginStart = dp(10) })
-            addView(actions)
+            body.addView(ShieldScene(this@MainActivity, fullyReady), LinearLayout.LayoutParams(dp(116), dp(136)))
+            addView(body)
+            if (fullyReady) {
+                gap(12)
+                action("Quản lý nhóm", false) { page = 1; render(); scrollToTop() }
+            }
+        }
+        content.gap(12)
+        section("Thiết lập")
+        card().apply {
+            roleSwitchRow()
+            filteringSwitchRow(prefs)
+            blockedGroupsRow(blocked.size)
         }
         val stats = row()
         listOf("${blocked.sumOf { it.numbers.size }}" to "Số trong nhóm bật", "${repository.processedRealCount()}" to "Chặn / tắt chuông").forEachIndexed { index, (value, caption) ->
@@ -337,7 +462,7 @@ class MainActivity : Activity() {
         val (searchView, input) = searchBox("Tìm thương hiệu…", search)
         content.addView(searchView); content.gap(12)
         val filters = row(); content.addView(filters); content.gap(12)
-        if (!hasRole() || !repository.preferences().protection) content.addView(label("Quy tắc được lưu nhưng bộ lọc ${if (!hasRole()) "chưa có quyền hoạt động" else "đang tạm dừng"}. Xem Tổng quan để kích hoạt.", 13f, red)).also { content.gap(12) }
+        if (!hasRole() || !repository.preferences().protection) content.addView(label("Quy tắc được lưu nhưng ${if (!hasRole()) "chưa chọn App lọc cuộc gọi" else "Đang lọc đang tắt"}. Bật lại ở Tổng quan hoặc Cài đặt.", 13f, red)).also { content.gap(12) }
         val list = column(); content.addView(list)
         var all = repository.brands()
         val allowedNumbers = repository.allowed()
@@ -441,7 +566,7 @@ class MainActivity : Activity() {
                 val values = parseNumbers()
                 try {
                     repository.saveBrand(brand?.id, name.text.toString(), note.text.toString(), values, blocked.isChecked)
-                    dialog.dismiss(); render(); toast(if (blocked.isChecked && !hasRole()) "Đã lưu quy tắc. Kích hoạt lọc cuộc gọi ở Tổng quan để áp dụng." else "Đã lưu thương hiệu.")
+                    dialog.dismiss(); render(); toast(if (blocked.isChecked && !hasRole()) "Đã lưu quy tắc. Bật App lọc cuộc gọi ở Tổng quan để áp dụng." else "Đã lưu thương hiệu.")
                 } catch (e: Exception) {
                     errorText.text = e.message ?: "Không thể lưu."; errorText.visibility = View.VISIBLE
                     if (name.text.toString().trim().length < 2 || e.message?.contains("Tên thương hiệu") == true) name.error = e.message
@@ -454,9 +579,11 @@ class MainActivity : Activity() {
     }
     private fun simulator(initialNumber: String = "") {
         val form = column().apply { setPadding(dp(22), dp(12), dp(22), dp(12)) }
-        form.addView(label("Cùng bộ quyết định với dịch vụ Android. Trạng thái quyền hệ thống không ảnh hưởng mô phỏng.", 13f, muted)); form.gap(12)
+        form.addView(label("Cùng bộ quyết định với dịch vụ Android. Thử số lạ + tên hiển thị chứa tên nhóm đang chặn để kiểm tra học số.", 13f, muted)); form.gap(12)
         val number = field("Số gọi đến", initialNumber).apply { inputType = InputType.TYPE_CLASS_PHONE }
         form.addView(number); form.gap(8)
+        val displayName = field("Tên hiển thị (tuỳ chọn)", "")
+        form.addView(displayName); form.gap(8)
         val contact = CheckBox(this).apply { setText(R.string.simulate_contact); textSize = 13f }
         form.addView(contact)
         val result = label("Kết quả sẽ hiển thị tại đây.", 15f, muted)
@@ -464,10 +591,32 @@ class MainActivity : Activity() {
         form.action("Kiểm tra quy tắc") {
             safe {
                 require(PhoneNumbers.valid(number.text.toString())) { "Nhập số hợp lệ từ 8–15 chữ số." }
-                val decision = ScreeningEngine.evaluate(number.text.toString(), repository.snapshotForNumber(number.text.toString()), contact.isChecked)
-                repository.record(PhoneNumbers.normalize(number.text.toString()), decision, true)
+                val raw = number.text.toString()
+                val name = displayName.text.toString().trim()
+                var decision = ScreeningEngine.evaluate(raw, repository.snapshotForScreening(raw), contact.isChecked, name)
+                var brandId = decision.learnBrandId
+                if (decision.learnBrandId != null && decision.action != Action.ALLOW) {
+                    if (repository.learnNumber(decision.learnBrandId, raw) == null) {
+                        decision = decision.copy(learnBrandId = null)
+                    }
+                }
+                if (brandId == null && decision.brand != null && decision.action != Action.ALLOW) {
+                    brandId = repository.brandIdByName(decision.brand)
+                }
+                repository.record(PhoneNumbers.normalize(raw), decision, true)
+                if (repository.preferences().notifyBlocked && decision.action != Action.ALLOW) {
+                    requestNotifyPermission()
+                    vn.quietcall.screening.BlockNotifier.show(
+                        this,
+                        PhoneNumbers.normalize(raw),
+                        decision.action,
+                        decision.brand,
+                        brandId,
+                        learned = decision.learnBrandId != null,
+                    )
+                }
                 result.text = getString(R.string.simulation_result, actionName(decision.action), decision.reason)
-                result.setTextColor(if (decision.action == Action.BLOCK) red else green)
+                result.setTextColor(if (decision.action == Action.ALLOW) green else red)
             }
         }
         AlertDialog.Builder(this).setTitle("Mô phỏng cuộc gọi đến").setView(form).setPositiveButton("Đóng") { _, _ -> render() }.show()
@@ -494,7 +643,7 @@ class MainActivity : Activity() {
             if (events.isEmpty()) card(list).apply {
                 gravity = Gravity.CENTER; addView(iconTile(Glyph.CLOCK, violet, Color.rgb(237, 234, 248), 56)); gap(14)
                 addView(label(if (historyQuery.isBlank()) "Chưa có lượt xử lý" else "Không có kết quả phù hợp", 18f, ink, true)); gap(8)
-                addView(label(if (historyQuery.isNotBlank()) "Thử đổi số, tên thương hiệu hoặc bộ lọc để tìm lại." else "Kích hoạt lọc để ghi nhận cuộc gọi hệ thống, hoặc dùng mô phỏng để trình diễn bộ chặn.", 14f, muted))
+                addView(label(if (historyQuery.isNotBlank()) "Thử đổi số, tên thương hiệu hoặc bộ lọc để tìm lại." else "Bật App lọc cuộc gọi để ghi nhận cuộc gọi hệ thống, hoặc dùng mô phỏng để trình diễn.", 14f, muted))
                 action("Thử mô phỏng", false) { simulator() }
             }
             events.forEach { event -> card(list).apply {
@@ -553,22 +702,35 @@ class MainActivity : Activity() {
     private fun settingsPage() {
         val prefs = repository.preferences()
         heading("Cài đặt", "Theo cách bạn muốn.")
+        section("App lọc hệ thống")
         card().apply {
-            val state = row(); state.addView(iconTile(Glyph.SHIELD))
-            val summary = column().apply { addView(label("Bộ lọc cuộc gọi", 16f, ink, true)); gap(3); addView(label("Android 10 trở lên", 12f, muted)) }
-            state.addView(summary, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(12) }); state.addView(badge(if (hasRole()) "Đã cấp" else "Chưa cấp", if (hasRole()) green else amber, if (hasRole()) pale else Color.rgb(251, 242, 223)))
-            addView(state); gap(8)
-            if (!hasRole()) action("Kích hoạt lọc cuộc gọi") { requestRole() }
+            roleSwitchRow()
+            gap(4)
             settingEntry(this, Glyph.USER, "Quyền danh bạ", if (Contacts.canRead(this@MainActivity)) "Đã cấp · bảo vệ số liên hệ" else "Tùy chọn · chưa cấp") {
                 if (Contacts.canRead(this@MainActivity)) appSettings() else requestPermissions(arrayOf(Manifest.permission.READ_CONTACTS), 101)
             }
             settingEntry(this, Glyph.SETTINGS, "Quyền ứng dụng", "Quản lý trong cài đặt Android") { appSettings() }
         }
-        section("Cách bảo vệ")
+        section("Cách lọc")
         card().apply {
-            toggle("Bật bảo vệ", "Tắt để tạm cho phép cuộc gọi", prefs.protection) { repository.setSetting("protection", it) }
+            filteringSwitchRow(prefs)
             toggle("Chỉ tắt chuông", "Cuộc gọi vẫn có thể hiển thị", prefs.silence) { repository.setSetting("silence", it) }
             toggle("Ưu tiên danh bạ", "Cho phép số liên hệ đã lưu", prefs.protectContacts) { repository.setSetting("protectContacts", it) }
+            toggle("Chặn theo tên hiển thị", "Số lạ khớp tên nhóm đang chặn → chặn và học số", prefs.matchCallerName) {
+                repository.setSetting("matchCallerName", it); render()
+            }
+            toggle("Thông báo khi chặn", "Noti kèm Cho phép / Gỡ khỏi nhóm", prefs.notifyBlocked) {
+                repository.setSetting("notifyBlocked", it)
+                if (it) requestNotifyPermission()
+                render()
+            }
+        }
+        if (prefs.notifyBlocked && !hasNotifyPermission()) {
+            content.gap(8)
+            card(color = Color.rgb(251, 242, 223)).apply {
+                addView(label("Chưa cấp quyền thông báo. Cấp quyền để nhận noti khi chặn.", 13f, amber))
+                action("Cấp quyền thông báo", false) { requestNotifyPermission() }
+            }
         }
         section("Luôn cho phép", "Thêm số") { allowedEditor() }
         card().apply {
@@ -594,7 +756,7 @@ class MainActivity : Activity() {
     private fun appSettings() { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:$packageName"))) }
     private fun aboutDialog() {
         AlertDialog.Builder(this).setTitle("Quyền riêng tư & phạm vi")
-            .setMessage("Dữ liệu nằm trên thiết bị. Không có quyền Internet, không gửi số lên máy chủ, không đọc nhật ký cuộc gọi hệ thống; sao lưu tự động đã tắt.\n\nQuietCall chỉ đối chiếu số trong danh mục. Hỗ trợ cuộc gọi điện thoại Android 10+, không lọc Zalo/Messenger.\n\nChế độ tắt chuông vẫn có thể hiện giao diện cuộc gọi. Khi chưa có quyền danh bạ, Android thường chỉ chuyển số ngoài danh bạ đến bộ lọc.\n\nLưu riêng 500 cuộc gọi hệ thống và 100 lượt mô phỏng.")
+            .setMessage("Dữ liệu nằm trên thiết bị. Không có quyền Internet, không gửi số lên máy chủ, không đọc nhật ký cuộc gọi hệ thống; sao lưu tự động đã tắt.\n\nQuietCall chặn theo số đã lưu trong thương hiệu, và (nếu bật) theo tên hiển thị khớp tên nhóm đang chặn — khi đó số mới được thêm vào nhóm và có thông báo Cho phép / Gỡ. Tên hiển thị chỉ có khi hệ thống cung cấp; không phải mọi máy đều có.\n\nBật App lọc cuộc gọi (Caller ID & spam) một lần; dùng Đang lọc để tạm tắt quy tắc. Không thay app nghe máy. Không lọc Zalo/Messenger.\n\nLưu riêng 500 cuộc gọi hệ thống và 100 lượt mô phỏng.")
             .setPositiveButton("Đã hiểu", null).show()
     }
     private fun allowedEditor() {
@@ -684,8 +846,8 @@ class MainActivity : Activity() {
     @Deprecated("Platform Activity callback")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (resultCode != RESULT_OK) { if (requestCode == 100) { toast("Chưa cấp vai trò lọc. Bạn vẫn có thể mô phỏng."); render() }; return }
-        if (requestCode == 100) { render(); return }
+        if (resultCode != RESULT_OK) { if (requestCode == 100) { toast("Chưa chọn QuietCall làm app lọc. Bạn vẫn có thể mô phỏng."); render() }; return }
+        if (requestCode == 100) { toast("Đã chọn QuietCall làm app lọc cuộc gọi."); requestNotifyPermission(); render(); return }
         val uri = data?.data ?: return
         if (requestCode == 201) {
             dataWork("Đang đọc danh mục", { repo ->
@@ -709,6 +871,9 @@ class MainActivity : Activity() {
     }
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 101) { toast(if (Contacts.canRead(this)) "Đã cấp quyền danh bạ." else "Chưa cấp quyền danh bạ. Có thể cấp lại trong thông tin ứng dụng."); render() }
+        when (requestCode) {
+            101 -> { toast(if (Contacts.canRead(this)) "Đã cấp quyền danh bạ." else "Chưa cấp quyền danh bạ. Có thể cấp lại trong thông tin ứng dụng."); render() }
+            102 -> { toast(if (hasNotifyPermission()) "Đã cấp quyền thông báo." else "Chưa cấp quyền thông báo. Có thể cấp lại trong thông tin ứng dụng."); render() }
+        }
     }
 }

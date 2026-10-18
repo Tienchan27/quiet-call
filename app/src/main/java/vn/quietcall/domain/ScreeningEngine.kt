@@ -3,10 +3,16 @@ package vn.quietcall.domain
 import java.text.Normalizer
 
 data class Brand(val id: Long, val name: String, val note: String, val blocked: Boolean, val numbers: List<String>, val updatedAt: Long = 0)
-data class Preferences(val protection: Boolean = true, val silence: Boolean = false, val protectContacts: Boolean = true)
+data class Preferences(
+    val protection: Boolean = true,
+    val silence: Boolean = false,
+    val protectContacts: Boolean = true,
+    val matchCallerName: Boolean = true,
+    val notifyBlocked: Boolean = true,
+)
 data class Snapshot(val brands: List<Brand>, val allowed: Set<String>, val preferences: Preferences)
 enum class Action { ALLOW, BLOCK, SILENCE }
-data class Decision(val action: Action, val reason: String, val brand: String? = null)
+data class Decision(val action: Action, val reason: String, val brand: String? = null, val learnBrandId: Long? = null)
 data class CallEvent(val id: Long, val number: String, val action: Action, val reason: String, val brand: String?, val timestamp: Long, val simulated: Boolean)
 
 /** Country-aware equality for Vietnam. International numbers keep their country code. */
@@ -30,15 +36,43 @@ object PhoneNumbers {
 
 /** No network or Android dependencies: the service and simulator share this exact decision path. */
 object ScreeningEngine {
-    fun evaluate(raw: String, snapshot: Snapshot, isContact: Boolean = false): Decision {
+    fun evaluate(raw: String, snapshot: Snapshot, isContact: Boolean = false, displayName: String = ""): Decision {
         val number = PhoneNumbers.normalize(raw)
         if (!snapshot.preferences.protection) return Decision(Action.ALLOW, "Bảo vệ đang tạm dừng")
         if (number.isBlank()) return Decision(Action.ALLOW, "Không có số để đối chiếu")
         if (number in snapshot.allowed) return Decision(Action.ALLOW, "Số thuộc danh sách cho phép")
         if (isContact && snapshot.preferences.protectContacts) return Decision(Action.ALLOW, "Bảo vệ số trong danh bạ")
-        val brand = snapshot.brands.firstOrNull { it.blocked && number in it.numbers }
-            ?: return Decision(Action.ALLOW, "Không thuộc thương hiệu bị chặn")
-        return Decision(if (snapshot.preferences.silence) Action.SILENCE else Action.BLOCK,
-            "Khớp số đã lưu của ${brand.name}", brand.name)
+        val byNumber = snapshot.brands.firstOrNull { it.blocked && number in it.numbers }
+        if (byNumber != null) {
+            return Decision(
+                if (snapshot.preferences.silence) Action.SILENCE else Action.BLOCK,
+                "Khớp số đã lưu của ${byNumber.name}",
+                byNumber.name,
+                learnBrandId = null,
+            )
+        }
+        if (snapshot.preferences.matchCallerName) {
+            val byName = matchBlockedBrand(displayName, snapshot.brands)
+            if (byName != null) {
+                return Decision(
+                    if (snapshot.preferences.silence) Action.SILENCE else Action.BLOCK,
+                    "Khớp tên hiển thị của ${byName.name}; đã thêm số vào nhóm",
+                    byName.name,
+                    learnBrandId = byName.id,
+                )
+            }
+        }
+        return Decision(Action.ALLOW, "Không thuộc thương hiệu bị chặn")
+    }
+
+    /** Brand name_key (length >= 3) must appear inside the normalized caller display name. */
+    fun matchBlockedBrand(displayName: String, brands: List<Brand>): Brand? {
+        val displayKey = PhoneNumbers.key(displayName)
+        if (displayKey.length < 3) return null
+        return brands.firstOrNull { brand ->
+            if (!brand.blocked) return@firstOrNull false
+            val nameKey = PhoneNumbers.key(brand.name)
+            nameKey.length >= 3 && displayKey.contains(nameKey)
+        }
     }
 }

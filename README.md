@@ -4,11 +4,11 @@
 
 ## Ý tưởng và phạm vi
 
-Người dùng thêm hoặc nhập danh mục thương hiệu, tìm tên (hỗ trợ tìm không dấu), rồi bật chặn cả nhóm số. Android không tự cung cấp danh tính thương hiệu cho mọi số gọi đến; QuietCall nhận diện bằng số đã có trong danh mục. Số mới cần được bổ sung. Không có tuyên bố nhận diện tất cả số của một doanh nghiệp.
+Người dùng thêm hoặc nhập danh mục thương hiệu, tìm tên (hỗ trợ tìm không dấu), rồi bật chặn cả nhóm số. QuietCall nhận diện bằng số đã lưu; nếu bật **Chặn theo tên hiển thị**, số lạ có tên Caller ID chứa tên nhóm đang chặn cũng bị chặn và tự thêm vào nhóm (có thông báo Cho phép / Gỡ). Tên hiển thị chỉ có khi hệ thống cung cấp — không phải mọi máy/nhà mạng đều có. Không tuyên bố nhận diện mọi số của một doanh nghiệp.
 
 **Tính năng:**
 
-- Chặn/từ chối cuộc gọi đến bằng Android `CallScreeningService`; yêu cầu bỏ thông báo cuộc gọi bị chặn.
+- Chặn/từ chối cuộc gọi đến bằng Android `CallScreeningService`; bỏ missed-call hệ thống, có thông báo QuietCall (tùy chọn) kèm undo.
 - Tùy chọn tắt chuông (cuộc gọi vẫn có thể hiện trên màn hình).
 - Thêm/sửa/xóa thương hiệu, ghi chú nguồn và nhiều số; bật/tắt theo thương hiệu.
 - Chuẩn hóa số Việt Nam `+84`, `0084`, `0`; số quốc tế khác giữ mã nước.
@@ -57,12 +57,12 @@ APK: `app/build/outputs/apk/debug/app-debug.apk`. Bản debug được ký tự 
 ## Cài đặt và sử dụng
 
 1. Chép APK vào điện thoại Android 10+, mở tệp và chọn Cài đặt. Nếu Android hỏi, cho phép ứng dụng đang mở tệp cài ứng dụng từ nguồn này.
-2. Mở QuietCall, nhấn **Kích hoạt lọc cuộc gọi** và chọn QuietCall trong hộp thoại Caller ID & spam của Android.
-3. Vào **Thương hiệu**, nhấn **+**, nhập tên và các số liên quan. Mỗi dòng một số hoặc ngăn cách bằng dấu phẩy/chấm phẩy. Lưu rồi bật công tắc chặn cả nhóm.
+2. Mở QuietCall: nếu chưa chọn app lọc, hệ thống hiện hộp thoại Caller ID & spam — chọn QuietCall. Hoặc bật công tắc **App lọc cuộc gọi** ở Tổng quan / Cài đặt. Giữ **Đang lọc** bật khi muốn chặn.
+3. Vào **Thương hiệu**, nhấn **+**, nhập tên và các số liên quan. Mỗi dòng một số hoặc ngăn cách bằng dấu phẩy/chấm phẩy. Lưu rồi bật công tắc chặn cả nhóm. Trong **Cài đặt**, giữ bật *Chặn theo tên hiển thị* và *Thông báo khi chặn* (cấp quyền thông báo trên Android 13+).
 4. Bấm thẻ thương hiệu để sửa tên, ghi chú nguồn hoặc bổ sung số. Tìm kiếm hỗ trợ tên có/không dấu; có bộ lọc nhóm đang chặn.
 5. **Lịch sử** hiển thị kết quả và nguồn Hệ thống/Mô phỏng. Bấm một lượt để xem đầy đủ lý do, thêm ngoại lệ, gán nhóm hoặc sao chép số.
 6. **Cài đặt → Danh sách ngoại lệ** quản lý số luôn cho phép. Ngoại lệ được ưu tiên hơn quy tắc chặn. Quyền danh bạ là tùy chọn để bảo vệ số liên hệ đã lưu.
-7. Bật **Chỉ tắt chuông** nếu muốn giữ cuộc gọi nhưng không đổ chuông; giao diện cuộc gọi vẫn có thể xuất hiện. Nút tạm dừng ở Tổng quan cho phép cuộc gọi tạm thời.
+7. Bật **Chỉ tắt chuông** nếu muốn giữ cuộc gọi nhưng không đổ chuông; giao diện cuộc gọi vẫn có thể xuất hiện. Tắt **Đang lọc** ở Tổng quan để tạm cho phép mọi cuộc gọi.
 8. **Nhập/Xuất danh mục** dùng JSON. Xem trước rồi xác nhận gộp; nhóm mới chưa tự bật chặn. Khôi phục ngoại lệ cần chọn riêng.
 
 Bản cài mới có danh mục trống, không kèm số điện thoại hay cấu hình cá nhân từ máy phát triển.
@@ -72,14 +72,15 @@ Bản cài mới có danh mục trống, không kèm số điện thoại hay c�
 1. **Cài đặt → Danh mục demo**, xác nhận nạp. Các nhóm mặc định chưa chặn.
 2. **Thương hiệu → Aster Finance · Demo**, bật công tắc chặn.
 3. **Tổng quan → Thử quy tắc**, nhập `0900000001`: **Đã chặn**. Thử `+84 900 000 002`: cũng **Đã chặn**, cùng nhóm.
-4. Thử `0900000011`: **Cho phép** vì Nova chưa bật chặn.
-5. Trong Lịch sử, bấm số Aster rồi chọn **Luôn cho phép số này**; mô phỏng lại: **Cho phép**.
+4. Thử số lạ (vd. `0911222333`) kèm tên hiển thị chứa `Aster Finance · Demo`: **Đã chặn**, số được thêm vào nhóm Aster; có thể dùng nút Cho phép / Gỡ trên thông báo.
+5. Thử `0900000011`: **Cho phép** vì Nova chưa bật chặn.
+6. Trong Lịch sử, bấm số Aster rồi chọn **Luôn cho phép số này**; mô phỏng lại: **Cho phép**.
 
 Mô phỏng dùng cùng bộ quyết định với dịch vụ Android; trạng thái quyền hệ thống không ảnh hưởng mô phỏng. Để kiểm tra cuộc gọi thật, dùng số của điện thoại thứ hai do bạn kiểm soát và cấp vai trò lọc trên máy nhận.
 
 **Mọi thương hiệu và số trong demo là giả lập. Không gọi các số demo.** Muốn kiểm tra cuộc gọi thật, thay bằng số của điện thoại thứ hai do bạn kiểm soát.
 
-Nếu không chặn, kiểm tra vai trò lọc, trạng thái bảo vệ, công tắc nhóm, số đã lưu, ngoại lệ và bảo vệ danh bạ. Ứng dụng chỉ nhận diện số trong danh mục; số mới cần bổ sung. Lịch sử chỉ chứa các lượt ứng dụng nhận xử lý, không phải toàn bộ nhật ký điện thoại. Đã kiểm tra trên emulator Android 10; chưa xác minh cuộc gọi SIM trên điện thoại vật lý.
+Nếu không chặn, kiểm tra vai trò lọc, trạng thái bảo vệ, công tắc nhóm, số đã lưu / tên hiển thị, ngoại lệ và bảo vệ danh bạ. Số mới chưa khớp tên có thể bổ sung thủ công hoặc để app học khi tên hiển thị khớp. Lịch sử chỉ chứa các lượt ứng dụng nhận xử lý, không phải toàn bộ nhật ký điện thoại. Đã kiểm tra trên emulator Android 10; chưa xác minh cuộc gọi SIM trên điện thoại vật lý.
 
 ## Tài liệu kỹ thuật
 
